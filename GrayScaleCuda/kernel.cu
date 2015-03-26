@@ -124,7 +124,7 @@ cudaError_t turnGrayWithCuda(unsigned char* bitmapData, BitmapInfoHeader* header
 	dim3 threadsPerBlock(32, 32);
 	dim3 blocksPerGrid((header->width + threadsPerBlock.x - 1) / threadsPerBlock.x,
 		(header->height + threadsPerBlock.y - 1) / threadsPerBlock.y);
-		//(pixelCount + threadsPerBlock - 1) / threadsPerBlock / IMAGE_BLOCK_SIZE;
+
     LOG("CUDA kernel launch with %dx%d blocks of %dx%d threads. Total threads=%d",
 		blocksPerGrid.x, blocksPerGrid.y, threadsPerBlock.x, threadsPerBlock.y,
 		blocksPerGrid.x * blocksPerGrid.y * threadsPerBlock.x * threadsPerBlock.y);

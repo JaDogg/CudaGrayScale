@@ -22,7 +22,7 @@
 	} while (0)
 
 #define DO_FAILED_EXIT()
-// fprintf(stderr, __VA_ARGS__);\
+
 // Make sure that a custom DO_FAILED_EXIT is defined
 #define REPORT_CUDA_ERROR(cudaStatus, message, ...)\
 	do {\
