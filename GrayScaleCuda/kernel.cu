@@ -13,35 +13,43 @@
 #include "bitmap.cuh"
 #define PIXEL_SIZE 3
 
+// My GPU Has 1024 Threads per block, thus 32x32 threads
+// 32 = 2^5, therefore 32 is 5 bits
+#define THREAD_PER_2D_BLOCK 32
+#define THREAD_PER_2D_BLOCK_BITS 5
+
 cudaError_t turnGrayWithCuda(unsigned char* bitmapData, BitmapInfoHeader* header, unsigned int size);
 
 // Turn given bitmap data to gray scale
 __global__ void turnGray(unsigned char* bitmapData, unsigned long size, unsigned int width)
 {
-#define xIndex (blockIdx.x * blockDim.x + threadIdx.x)
-#define yIndex (blockIdx.y * blockDim.y + threadIdx.y)
-	unsigned long dataIndex = (xIndex + (yIndex * width)) * PIXEL_SIZE;
+	// This is done because shifting left by 5 is faster than multiplying by 32
+#define xIndex ((blockIdx.x << THREAD_PER_2D_BLOCK_BITS) + threadIdx.x)
+#define yIndex ((blockIdx.y << THREAD_PER_2D_BLOCK_BITS) + threadIdx.y)
 #define BLUE bitmapData[dataIndex]
 #define GREEN bitmapData[dataIndex+1]
 #define RED bitmapData[dataIndex+2]
+	unsigned long dataIndex = (xIndex + (yIndex * width)) * PIXEL_SIZE;
 	// Gray occurs when RED == GREEN == BLUE, so get average
 	if(dataIndex < size) {
-		unsigned char gray = (RED + GREEN + BLUE) / 3;
+		// This is done because shifting right is faster than division
+		// And average can be calculated in two steps
+		unsigned char gray = (((RED + GREEN) >> 1) + BLUE) >> 1;
 		// Convert all pixels to gray
 		RED = gray;
 		GREEN = gray;
 		BLUE = gray;
 	}
-#undef BLUE
-#undef GREEN
 #undef RED
-#undef i
-#undef j
+#undef GREEN
+#undef BLUE
+#undef yIndex
+#undef xIndex
 }
 
 void printHelp(char* binary)
 {
-	printf("GrayScaleCuda\n");
+	printf("GrayScaleCUDA\n");
 	printf("----------------------------------");
 	printf("\t-Bhathiya Perera\n");
 	printf("Execute: %s <Bitmap>\n", binary);
@@ -68,10 +76,9 @@ int main(int argc, char** argv)
 #else
 #define bitmapFilename argv[1]
 #endif
-	
-	puts("--------------------------------------------------");
-	LOG("Welcome to grayscale with cuda.");
 
+	puts("--------------------------------------------------");
+	LOG("Welcome to grayscale with CUDA.");
 	LOG("Turning %s to grayscale...", bitmapFilename);
 
 	BitmapInfoHeader* header = 0;
@@ -121,7 +128,10 @@ cudaError_t turnGrayWithCuda(unsigned char* bitmapData, BitmapInfoHeader* header
 		cudaMemcpyHostToDevice);
 	REPORT_CUDA_ERROR(cudaStatus, "Copying memory failed!");
 
-	dim3 threadsPerBlock(32, 32);
+	// Calculate number of threadsPerBlock and blocksPerGrid
+	dim3 threadsPerBlock(THREAD_PER_2D_BLOCK, THREAD_PER_2D_BLOCK);
+	// Need to consider integer devision, and It's lack of precision
+	// This way total number of threads are newer lower than pixelCount
 	dim3 blocksPerGrid((header->width + threadsPerBlock.x - 1) / threadsPerBlock.x,
 		(header->height + threadsPerBlock.y - 1) / threadsPerBlock.y);
 
@@ -145,7 +155,10 @@ cudaError_t turnGrayWithCuda(unsigned char* bitmapData, BitmapInfoHeader* header
 	REPORT_CUDA_ERROR(cudaStatus, "cudaDeviceSynchronize() returned error"
 		" code %d after launching kernel!", cudaStatus);
 
-	CUDA_LOG_TIME(size*2.0f/milliseconds/1e6f);
+	// Log Effective Bandwidth and total time
+	// It is necessary to multiply by 2 because both read and write operations
+	// Occur
+	CUDA_LOG_TIME(size * 2.0f / milliseconds / 1e6f);
 
     // Copy bitmap data from GPU buffer to host memory.
     cudaStatus = cudaMemcpy(bitmapData, devBitmap, dataSize,
